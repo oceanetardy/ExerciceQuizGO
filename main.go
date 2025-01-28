@@ -121,7 +121,7 @@ func saveResultsHeader(outputPath string, questions []question) {
 		for _, q := range questions {
 			correctionRow = append(correctionRow, q.answer)
 		}
-		correctionRow = append(correctionRow, "Nombre de questions répondues", "Nombre de réponses correctes")
+		correctionRow = append(correctionRow, "Nombre de questions répondues", "Nombre de réponses correctes", "Pourcentage de bonnes réponses")
 		writer.Write(correctionRow)
 	}
 }
@@ -146,11 +146,17 @@ func saveResults(outputPath string, userName string, quiz *quiz, originalQuestio
 		}
 	}
 
+	// Calcul du pourcentage de bonnes réponses
+	percentageCorrect := 0.0
+	if quiz.answered > 0 {
+		percentageCorrect = (float64(quiz.answeredCorrectly) / float64(len(originalQuestions))) * 100
+	}
+
 	// Écrit les réponses de l'utilisateur
 	userRow := []string{userName}
 	userRow = append(userRow, orderedAnswers...)
-	// Ajoute les deux colonnes supplémentaires à la fin
-	userRow = append(userRow, fmt.Sprintf("%d", quiz.answered), fmt.Sprintf("%d", quiz.answeredCorrectly))
+	// Ajoute les trois colonnes supplémentaires à la fin
+	userRow = append(userRow, fmt.Sprintf("%d", quiz.answered), fmt.Sprintf("%d", quiz.answeredCorrectly), fmt.Sprintf("%.2f%%", percentageCorrect))
 	writer.Write(userRow)
 }
 

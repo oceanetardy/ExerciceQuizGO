@@ -1,4 +1,4 @@
-Correction,10,2,5,blanc,aucun,Nombre de questions répondues,Nombre de réponses correctes
-Melange,10,2,5,blanc,aucun,5,5
-Melange2,10,2,5,blanc,aucun,5,5
-pasmelange,10,2,5,blanc,aucun,5,5
+Correction,10,2,5,blanc,aucun,Nombre de questions répondues,Nombre de réponses correctes,Pourcentage de bonnes réponses
+Test,10,2,5,blanc,aucun,5,5,100.00%
+Test2,10,2,5,blanc,aucun,5,5,100.00%
+Test3,12,2,5,noir,ecole,5,2,40.00%
