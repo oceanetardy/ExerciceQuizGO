@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"os"
 	"time"
 )
@@ -53,6 +54,14 @@ func loadQuiz(filePath string) *quiz {
 		quiz.questions = append(quiz.questions, question)
 	}
 	return &quiz
+}
+
+// Fonction pour mélanger les questions
+func (quiz *quiz) shuffleQuestions() {
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(quiz.questions), func(i, j int) {
+		quiz.questions[i], quiz.questions[j] = quiz.questions[j], quiz.questions[i]
+	})
 }
 
 // Exécution du quiz
@@ -117,16 +126,29 @@ func saveResultsHeader(outputPath string, questions []question) {
 	}
 }
 
-func saveResults(outputPath string, userName string, quiz *quiz) {
+func saveResults(outputPath string, userName string, quiz *quiz, originalQuestions []question) {
+	saveResultsHeader(outputPath, originalQuestions)
+
 	csvFile, err := os.OpenFile(outputPath, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
 	fatalError("Erreur lors de l'ouverture du fichier CSV pour écrire les résultats", err)
 	defer csvFile.Close()
 	writer := csv.NewWriter(csvFile)
 	defer writer.Flush()
 
+	// Réorganiser les réponses de l'utilisateur selon l'ordre original des questions
+	orderedAnswers := make([]string, len(originalQuestions))
+	for i, originalQuestion := range originalQuestions {
+		for j, shuffledQuestion := range quiz.questions {
+			if originalQuestion.question == shuffledQuestion.question {
+				orderedAnswers[i] = quiz.userAnswers[j]
+				break
+			}
+		}
+	}
+
 	// Écrit les réponses de l'utilisateur
 	userRow := []string{userName}
-	userRow = append(userRow, quiz.userAnswers...)
+	userRow = append(userRow, orderedAnswers...)
 	// Ajoute les deux colonnes supplémentaires à la fin
 	userRow = append(userRow, fmt.Sprintf("%d", quiz.answered), fmt.Sprintf("%d", quiz.answeredCorrectly))
 	writer.Write(userRow)
@@ -144,8 +166,9 @@ func main() {
 	// Charger le quiz
 	quizData := loadQuiz(*filePathPtr)
 
-	// Initialiser le fichier CSV avec l'en-tête si nécessaire
-	saveResultsHeader(outputPath, quizData.questions)
+	// Sauvegarder une copie des questions d'origine
+	originalQuestions := make([]question, len(quizData.questions))
+	copy(originalQuestions, quizData.questions)
 
 	for {
 		// Demande le nom de l'utilisateur
@@ -153,8 +176,18 @@ func main() {
 		scanner.Scan()
 		userName := scanner.Text()
 
+		// Demande si l'utilisateur souhaite mélanger les questions
+		fmt.Print("Voulez-vous mélanger les questions ? (oui/non) : ")
+		scanner.Scan()
+		shuffleChoice := scanner.Text()
+
 		// Préparer un nouveau quiz
 		quiz := loadQuiz(*filePathPtr)
+
+		// Mélanger si option choisie
+		if shuffleChoice == "oui" {
+			quiz.shuffleQuestions()
+		}
 
 		// Exécuter le quiz
 		quiz.run()
@@ -163,7 +196,7 @@ func main() {
 		quiz.report(userName)
 
 		// Enregistrer les résultats dans le fichier CSV
-		saveResults(outputPath, userName, quiz)
+		saveResults(outputPath, userName, quiz, originalQuestions)
 		fmt.Printf("Les résultats ont été sauvegardés dans le fichier : %s\n", outputPath)
 
 		// Demander si un autre utilisateur souhaite participer
