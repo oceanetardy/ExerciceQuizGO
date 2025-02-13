@@ -5,7 +5,6 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
 	"os"
@@ -34,7 +33,7 @@ type quiz struct {
 	answered          int
 	answeredCorrectly int
 	questions         []question
-	userAnswers       []string
+	userAnswers       map[string]string
 }
 
 // Chargement du quiz depuis un fichier CSV
@@ -42,17 +41,22 @@ func loadQuiz(filePath string) *quiz {
 	csvFile, err := os.Open(filePath)
 	fatalError("Erreur lors de l'ouverture du fichier CSV", err)
 	defer csvFile.Close()
-	reader := csv.NewReader(bufio.NewReader(csvFile))
+
+	reader := csv.NewReader(csvFile)
 	var quiz quiz
-	for {
-		line, err := reader.Read()
-		if err == io.EOF {
-			break
+	quiz.userAnswers = make(map[string]string)
+
+	lines, err := reader.ReadAll()
+	fatalError("Erreur lors de l'analyse du CSV", err)
+
+	for _, line := range lines {
+		if len(line) < 2 {
+			continue
 		}
-		fatalError("Erreur lors de l'analyse du CSV", err)
-		question := question{line[0], line[1]}
-		quiz.questions = append(quiz.questions, question)
+		q := question{line[0], line[1]}
+		quiz.questions = append(quiz.questions, q)
 	}
+
 	return &quiz
 }
 
@@ -70,29 +74,24 @@ func (quiz *quiz) run() {
 	fmt.Printf("Attention, le quiz est limité à %d secondes.\n", *timeLimit)
 	timer := time.NewTimer(time.Duration(*timeLimit) * time.Second)
 quizLoop:
-	for _, question := range quiz.questions {
-		fmt.Println(question.question)
+	for _, q := range quiz.questions {
+		fmt.Println(q.question)
 		answerCh := make(chan string)
 		go func() {
 			scanner.Scan()
-			answer := scanner.Text()
-			answerCh <- answer
+			answerCh <- scanner.Text()
 		}()
 		select {
 		case <-timer.C:
 			break quizLoop
 		case answer := <-answerCh:
-			quiz.userAnswers = append(quiz.userAnswers, answer)
-			if answer == question.answer {
+			quiz.userAnswers[q.question] = answer
+			if answer == q.answer {
 				quiz.answeredCorrectly++
 			}
 			quiz.answered++
 		}
 	}
-	for len(quiz.userAnswers) < len(quiz.questions) {
-		quiz.userAnswers = append(quiz.userAnswers, "")
-	}
-	return
 }
 
 // Affichage du resultat de l'utilisateur
@@ -107,57 +106,25 @@ func (quiz *quiz) report(userName string) {
 }
 
 // Sauvegarde des résultats dans un fichier CSV
-// Si le fichier n'existe pas encore, créé un en-tête de correction
-func saveResultsHeader(outputPath string, questions []question) {
-	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
-		csvFile, err := os.Create(outputPath)
-		fatalError("Erreur lors de la création du fichier CSV des résultats", err)
-		defer csvFile.Close()
-		writer := csv.NewWriter(csvFile)
-		defer writer.Flush()
-
-		// Écrit la ligne de correction avec les réponses correctes
-		correctionRow := []string{"Correction"}
-		for _, q := range questions {
-			correctionRow = append(correctionRow, q.answer)
-		}
-		correctionRow = append(correctionRow, "Nombre de questions répondues", "Nombre de réponses correctes", "Pourcentage de bonnes réponses")
-		writer.Write(correctionRow)
-	}
-}
-
 func saveResults(outputPath string, userName string, quiz *quiz, originalQuestions []question) {
-	saveResultsHeader(outputPath, originalQuestions)
+	file, err := os.OpenFile(outputPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	fatalError("Erreur lors de l'ouverture du fichier de résultats", err)
+	defer file.Close()
 
-	csvFile, err := os.OpenFile(outputPath, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
-	fatalError("Erreur lors de l'ouverture du fichier CSV pour écrire les résultats", err)
-	defer csvFile.Close()
-	writer := csv.NewWriter(csvFile)
+	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
 	// Réorganiser les réponses de l'utilisateur selon l'ordre original des questions
 	orderedAnswers := make([]string, len(originalQuestions))
 	for i, originalQuestion := range originalQuestions {
-		for j, shuffledQuestion := range quiz.questions {
-			if originalQuestion.question == shuffledQuestion.question {
-				orderedAnswers[i] = quiz.userAnswers[j]
-				break
-			}
-		}
+		orderedAnswers[i] = quiz.userAnswers[originalQuestion.question]
 	}
 
-	// Calcul du pourcentage de bonnes réponses
-	percentageCorrect := 0.0
-	if quiz.answered > 0 {
-		percentageCorrect = (float64(quiz.answeredCorrectly) / float64(len(originalQuestions))) * 100
-	}
-
-	// Écrit les réponses de l'utilisateur
-	userRow := []string{userName}
-	userRow = append(userRow, orderedAnswers...)
-	// Ajoute les trois colonnes supplémentaires à la fin
-	userRow = append(userRow, fmt.Sprintf("%d", quiz.answered), fmt.Sprintf("%d", quiz.answeredCorrectly), fmt.Sprintf("%.2f%%", percentageCorrect))
-	writer.Write(userRow)
+	// Enregistrement des résultats
+	result := []string{userName}
+	result = append(result, orderedAnswers...)
+	result = append(result, fmt.Sprintf("%d", quiz.answered), fmt.Sprintf("%d", quiz.answeredCorrectly), fmt.Sprintf("%.2f%%", float64(quiz.answeredCorrectly)/float64(len(originalQuestions))*100))
+	writer.Write(result)
 }
 
 var (
@@ -167,6 +134,7 @@ var (
 )
 
 func main() {
+	flag.Parse()
 	outputPath := "resultats_quiz.csv"
 
 	// Charger le quiz
